@@ -6,26 +6,50 @@ from random import randint
 JUMP_KEY = 32  # space
 QUIT_KEY = 113  # q
 RESTART_KEYS = [10, 13]  # enter/return
-GAP_SIZE = 5
+GAP_SIZE = 5  # size of gap in walls
 WALL_SYMBOL = b'\xF0\x9F\x8C\xB2'  # tree emoji
 BIRD_SYMBOL = b'\xF0\x9F\x90\xA5'  # chicken emoji
-REFRESH_TIME = 0.1
-WALL_FREQUENCY = 15
-BIRD_JUMP_HEIGHT = 2
+REFRESH_TIME = 0.1  # sleep time between ticks
+WALL_FREQUENCY = 15  # ticks before creating new wall
+BIRD_JUMP_HEIGHT = 3
 WIDTH, HEIGHT = 50, 20
 GAME_OVER_TEXT = 'GAME OVER'
 RESTART_TEXT = 'press enter to restart'
 
 
+class Bird:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.dead = False
+        self.jump_start_ticks = None
+
+    def up(self):
+        self.y -= 1
+
+    def down(self):
+        self.y += 1
+
+    def start_jump(self, starting_ticks):
+        self.jump_start_ticks = starting_ticks
+
+    def end_jump(self):
+        self.jump_start_ticks = None
+
+    def jumped_enough(self, current_ticks):
+        return current_ticks - self.jump_start_ticks >= BIRD_JUMP_HEIGHT
+
+    def is_out_of_bounds(self):
+        return not 0 <= self.y < HEIGHT
+
+
 class Game:
     def __init__(self):
         self.game_on = True
-        self.bird_dead = False
         self.tick_count = 0
         self.wall_xs = []
         self.wall_ys = []
-        self.bird = [WIDTH // 2, HEIGHT // 2]
-        self.bird_jump_start_ticks = None
+        self.bird = Bird(WIDTH // 2, HEIGHT // 2)
         self.score = 0
 
         self.console = curses.initscr()
@@ -40,7 +64,7 @@ class Game:
             self.refresh_game()
             self.draw()
             self.tick_count += 1
-            if self.bird_dead:
+            if self.bird.dead:
                 self.prompt_restart()
             time.sleep(REFRESH_TIME)
 
@@ -56,21 +80,17 @@ class Game:
             self.game_on = False
 
         elif pressed_key == JUMP_KEY:
-            self.bird_jump_start_ticks = self.tick_count
+            self.bird.start_jump(self.tick_count)
 
     def refresh_game(self):
-        # Check if bird is not out of bounds top or bottom
-        if not 0 < self.bird[1] < HEIGHT:
-            self.bird_dead = True
-            return
-
         # Get list of indexes of items in wall_xs where value is the same as bird's x
-        colliding_x_idx = [i for i, x in enumerate(self.wall_xs) if x == self.bird[0]]
+        colliding_x_idx = [i for i, x in enumerate(self.wall_xs) if x == self.bird.x]
 
+        # Check if any of those indexes match bird.y on wall_ys
         if colliding_x_idx:
             for i in colliding_x_idx:
-                if self.bird[1] == self.wall_ys[i]:
-                    self.bird_dead = True
+                if self.bird.y == self.wall_ys[i]:
+                    self.bird.dead = True
                     return
             else:
                 self.score += 1
@@ -83,42 +103,41 @@ class Game:
             del self.wall_xs[i]
             del self.wall_ys[i]
 
+        # Move walls
         self.wall_xs = [x - 1 for x in self.wall_xs]
 
-        if self.bird_jump_start_ticks is None:
-            self.bird[1] += 1
+        if self.bird.jump_start_ticks is None:
+            self.bird.down()
+        elif self.bird.jumped_enough(self.tick_count):
+            self.bird.end_jump()
         else:
-            self.bird[1] -= 1
-            if self.tick_count - self.bird_jump_start_ticks > BIRD_JUMP_HEIGHT:
-                self.bird_jump_start_ticks = None
+            self.bird.up()
+
+        if self.bird.is_out_of_bounds():
+            self.bird.dead = True
 
     def draw(self):
-        if self.bird_dead:
+        if self.bird.dead:
             return
 
         self.console.clear()
 
+        # x and y are reversed in curses
         for x, y in zip(self.wall_xs, self.wall_ys):
             self.console.addstr(y, x, WALL_SYMBOL)
 
-        self.console.addstr(self.bird[1], self.bird[0], BIRD_SYMBOL)
+        self.console.addstr(self.bird.y, self.bird.x, BIRD_SYMBOL)
         self.console.addstr(HEIGHT + 1, WIDTH // 2, str(self.score))
-
         self.console.refresh()
 
     def new_wall(self):
-        gap_location = randint(
-            0,
-            HEIGHT - GAP_SIZE
-        )
-
+        gap_location = randint(1, HEIGHT - int(GAP_SIZE / 2) - 1)
         for i in range(HEIGHT):
             if abs(gap_location - i) > GAP_SIZE / 2:
                 self.wall_xs.append(WIDTH)
                 self.wall_ys.append(i)
 
     def prompt_restart(self):
-
         self.console.nodelay(False)
         self.console.addstr(
             HEIGHT // 2,
@@ -135,17 +154,17 @@ class Game:
         key_pressed = self.console.getch()
         if key_pressed in RESTART_KEYS:
             self.game_on = True
-            self.bird_dead = False
+            self.bird.dead = False
             self.tick_count = 0
             self.wall_xs = []
             self.wall_ys = []
-            self.bird = [WIDTH // 2, HEIGHT // 2]
-            self.bird_jump_start_ticks = None
+            self.bird.x, self.bird.y = WIDTH // 2, HEIGHT // 2
+            self.bird.end_jump()
             self.score = 0
             self.console.nodelay(True)
         elif key_pressed == QUIT_KEY:
             self.game_on = False
-            self.bird_dead = False
+            self.bird.dead = False
 
 
 if __name__ == '__main__':
