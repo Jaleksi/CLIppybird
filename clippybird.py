@@ -42,6 +42,16 @@ class Bird:
     def is_out_of_bounds(self):
         return not 0 <= self.y < HEIGHT
 
+    def advance(self, current_ticks):
+        if self.jump_start_ticks is None:
+            self.down()
+        elif self.jumped_enough(current_ticks):
+            self.end_jump()
+        else:
+            self.up()
+        if self.is_out_of_bounds():
+            self.dead = True
+
 
 class Game:
     def __init__(self):
@@ -57,11 +67,15 @@ class Game:
         self.console.keypad(True)
         curses.noecho()
         curses.curs_set(0)
+        curses.resizeterm(60, 60)
+
 
     def game_loop(self):
         while self.game_on:
             self.check_input()
-            self.refresh_game()
+            self.check_collision()
+            self.move_walls()
+            self.bird.advance(self.tick_count)
             self.draw()
             self.tick_count += 1
             if self.bird.dead:
@@ -75,14 +89,12 @@ class Game:
         pressed_key = self.console.getch()
         if not pressed_key:
             return
-
         if pressed_key == QUIT_KEY:
             self.game_on = False
-
         elif pressed_key == JUMP_KEY:
             self.bird.start_jump(self.tick_count)
 
-    def refresh_game(self):
+    def check_collision(self):
         # Get list of indexes of items in wall_xs where value is the same as bird's x
         colliding_x_idx = [i for i, x in enumerate(self.wall_xs) if x == self.bird.x]
 
@@ -95,26 +107,20 @@ class Game:
             else:
                 self.score += 1
 
+    def move_walls(self):
+        # Check if new wall needs to be added
         if not self.wall_xs or self.tick_count % WALL_FREQUENCY == 0:
             self.new_wall()
 
+        # Check if walls need to be removed
         idx_to_remove = [self.wall_xs.index(i) for i in self.wall_xs if i == 0]
-        for i in idx_to_remove:
-            del self.wall_xs[i]
-            del self.wall_ys[i]
+        if idx_to_remove:
+            for i in idx_to_remove:
+                del self.wall_xs[i]
+                del self.wall_ys[i]
 
-        # Move walls
+        # Actually move walls
         self.wall_xs = [x - 1 for x in self.wall_xs]
-
-        if self.bird.jump_start_ticks is None:
-            self.bird.down()
-        elif self.bird.jumped_enough(self.tick_count):
-            self.bird.end_jump()
-        else:
-            self.bird.up()
-
-        if self.bird.is_out_of_bounds():
-            self.bird.dead = True
 
     def draw(self):
         if self.bird.dead:
@@ -127,7 +133,7 @@ class Game:
             self.console.addstr(y, x, WALL_SYMBOL)
 
         self.console.addstr(self.bird.y, self.bird.x, BIRD_SYMBOL)
-        self.console.addstr(HEIGHT + 1, WIDTH // 2, str(self.score))
+        self.console.addstr(HEIGHT, WIDTH // 2, str(self.score))
         self.console.refresh()
 
     def new_wall(self):
