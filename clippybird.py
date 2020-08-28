@@ -67,8 +67,6 @@ class Game:
         self.console.keypad(True)
         curses.noecho()
         curses.curs_set(0)
-        curses.resizeterm(60, 60)
-
 
     def game_loop(self):
         while self.game_on:
